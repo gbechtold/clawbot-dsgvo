@@ -1,0 +1,24 @@
+name: tourismus
+description: Privacy template for tourism companies (hotels, ski resorts, tour operators)
+pii_types:
+  - email
+  - phone_at
+  - phone_de
+  - credit_card
+  - ip_address
+categories:
+  - booking_issue
+  - cancellation_request
+  - facility_complaint
+  - service_question
+  - feedback
+urgency_rules:
+  - keyword: "reservation"
+    urgency: high
+  - keyword: "tonight"
+    urgency: critical
+  - keyword: "cancelled"
+    urgency: high
+  - keyword: "arriving"
+    urgency: high
+retention_days: 365

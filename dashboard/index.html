@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawBot DSGVO Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🦞 ClawBot DSGVO MVP</h1>
+            <p class="subtitle">Privacy-First Customer Feedback Processing</p>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="total-signals">0</div>
+                <div class="stat-label">Total Signals</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pii-anonymized">0</div>
+                <div class="stat-label">PII Anonymized</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="critical-urgency">0</div>
+                <div class="stat-label">Critical</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="audit-entries">0</div>
+                <div class="stat-label">Audit Entries</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Recent Signals</h2>
+                <button id="refresh-btn" class="btn">Refresh</button>
+            </div>
+            <div id="signals-container" class="signals-grid">
+                <div class="loading">Loading signals...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Audit Log (Last 10 Entries)</h2>
+            <div id="audit-container" class="audit-log">
+                <div class="loading">Loading audit log...</div>
+            </div>
+        </div>
+
+        <footer>
+            <p>ClawBot MVP • DSGVO Compliant • Last updated: <span id="last-update">-</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+name: energie
+description: Privacy template for energy companies (Energie AG, Wien Energie, etc.)
+pii_types:
+  - email
+  - phone_at
+  - austrian_ssn
+  - iban
+  - ip_address
+categories:
+  - billing_complaint
+  - meter_reading
+  - connection_issue
+  - contract_question
+  - tariff_inquiry
+urgency_rules:
+  - keyword: "no power"
+    urgency: critical
+  - keyword: "outage"
+    urgency: critical
+  - keyword: "high bill"
+    urgency: high
+  - keyword: "meter"
+    urgency: medium
+retention_days: 730

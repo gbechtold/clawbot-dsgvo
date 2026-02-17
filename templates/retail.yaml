@@ -1,0 +1,24 @@
+name: retail
+description: Privacy template for retail companies
+pii_types:
+  - email
+  - phone_at
+  - phone_de
+  - credit_card
+  - ip_address
+categories:
+  - product_complaint
+  - delivery_issue
+  - return_request
+  - product_question
+  - praise
+urgency_rules:
+  - keyword: "not received"
+    urgency: high
+  - keyword: "damaged"
+    urgency: high
+  - keyword: "refund"
+    urgency: medium
+  - keyword: "cancel"
+    urgency: medium
+retention_days: 365

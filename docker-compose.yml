@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  clawbot-core:
+    container_name: clawbot-core
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://clawbot:${DB_PASSWORD:-clawbot_secure_pass}@clawbot-db:5432/clawbot
+      - OLLAMA_URL=http://clawbot-llm:11434
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-32-byte-encryption-key-here-change-me}
+      - LOG_LEVEL=INFO
+    depends_on:
+      - clawbot-db
+      - clawbot-llm
+    volumes:
+      - ./core:/app
+      - ./templates:/app/templates
+    networks:
+      - clawbot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  clawbot-db:
+    container_name: clawbot-db
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=clawbot
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-clawbot_secure_pass}
+      - POSTGRES_DB=clawbot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - clawbot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clawbot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  clawbot-llm:
+    container_name: clawbot-llm
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - clawbot-network
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    command: serve
+
+  clawbot-ui:
+    container_name: clawbot-ui
+    image: nginx:alpine
+    ports:
+      - "8443:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - clawbot-core
+    networks:
+      - clawbot-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  ollama-data:
+
+networks:
+  clawbot-network:
+    driver: bridge
