@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 
 from config import settings
 
@@ -53,7 +53,7 @@ async def log_audit_event(
                         signal_id,
                         action,
                         actor or "system",
-                        details,
+                        Json(details) if details else None,
                         datetime.utcnow()
                     )
                 )

@@ -1,10 +1,12 @@
 """Ingest endpoint for processing customer feedback."""
+import json
 import logging
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.extras import Json
 
 from config import settings
 from models.schemas import IngestRequest, IngestResponse
@@ -80,12 +82,12 @@ async def ingest_feedback(request: IngestRequest):
                     analysis.urgency,
                     analysis.sentiment,
                     anonymized_content,
-                    {
+                    Json({
                         "source": request.source,
                         "pii_count": len(pii_detections),
                         "original_metadata": request.metadata,
                         "summary": analysis.summary
-                    },
+                    }),
                     datetime.utcnow(),
                     datetime.utcnow()
                 ))

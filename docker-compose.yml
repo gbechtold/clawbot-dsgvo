@@ -14,8 +14,10 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-32-byte-encryption-key-here-change-me}
       - LOG_LEVEL=INFO
     depends_on:
-      - clawbot-db
-      - clawbot-llm
+      clawbot-db:
+        condition: service_healthy
+      clawbot-llm:
+        condition: service_started
     volumes:
       - ./core:/app
       - ./templates:/app/templates
