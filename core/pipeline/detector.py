@@ -8,13 +8,16 @@ logger = logging.getLogger(__name__)
 # Core regex patterns
 PATTERNS = {
     "email":        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-    "phone_at":     r'\b(?:\+43|0043|0)\s*\d{1,4}[\s/\-]?\d{3,4}[\s/\-]?\d{3,4}\b',
+    # Issue #5: extended AT phone patterns (slash format, spaces, local numbers)
+    "phone_at":     r'\b(?:\+43|0043|0)\s*\d{1,4}[/\s\-]?\d{3,4}[/\s\-]?\d{3,4}\b',
     "phone_de":     r'\b(?:\+49|0049)\s*\d{2,4}[\s/\-]?\d{3,4}[\s/\-]?\d{3,4}\b',
     "iban":         r'\b[A-Z]{2}\d{2}(?:\s?\d{4}){3,7}\s?\d{1,4}\b',
     "ip_address":   r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
     "credit_card":  r'\b(?:\d{4}[-\s]?){3}\d{4}\b',
     "austrian_ssn": r'\b\d{4}\s?\d{6}\b',
     "postal_code_at": r'\b[1-9]\d{3}\b(?=\s+[A-ZÄÖÜ][a-zäöüß])',  # AT PLZ vor Ortsname
+    # Issue #6: Austrian/German address detection
+    "address":      r'\b[A-ZÄÖÜ][a-zäöüß]+(?:straße|gasse|platz|weg|allee|ring|promenade)\s+\d+(?:/\d+)?\b',
 }
 
 # Häufige österreichische/deutsche Vor- und Nachnamen (erweiterbar)
@@ -27,12 +30,16 @@ FIRST_NAMES = {
     "ewald","alfred","heinz","dieter","reinhard","jürgen","manfred","rainer",
 }
 
+# Issue #1: Full-name context patterns – detect BEFORE individual first-name scan
+# so the whole "Vorname Nachname" span is registered and blocks partial matches
 LAST_NAME_INDICATORS = [
     r'\b(?:Herr|Frau|Dr\.|Mag\.|DI|Ing\.)\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)',
     r'\bich\s+(?:bin|heiße|heiß)\s+([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)',
     r'\b(?:mein\s+Name\s+ist|meine\s+Name\s+ist)\s+([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)',
     r'\bLG[,\s]+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)?)',  # "LG, Thomas"
     r'\b([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)\s+hier\b',       # "Anna Fink hier"
+    # Issue #1: plain "Vorname Nachname" two-capitalised-word pattern
+    r'\b([A-ZÄÖÜ][a-zäöüß]{2,}\s+[A-ZÄÖÜ][a-zäöüß]{2,})\b',
 ]
 
 
@@ -40,7 +47,7 @@ def detect_pii(content: str) -> List[Dict[str, Any]]:
     """
     Detect PII entities in German/Austrian text using regex patterns.
 
-    Erkennt: E-Mails, Telefonnummern (AT/DE), IBAN, Namen, IPs, PLZ.
+    Erkennt: E-Mails, Telefonnummern (AT/DE), IBAN, Namen, IPs, PLZ, Adressen.
 
     Args:
         content: Text content to scan for PII
@@ -65,24 +72,26 @@ def detect_pii(content: str) -> List[Dict[str, Any]]:
             "confidence": confidence,
         })
 
-    # 1. Regex-Patterns
+    # 1. Regex-Patterns (including address – Issue #6)
     for pii_type, pattern in PATTERNS.items():
         for match in re.finditer(pattern, content, re.IGNORECASE):
             add_detection(pii_type, match.group(0), match.start(), match.end())
 
-    # 2. Vorname-Erkennung (case-insensitive Wortliste)
-    words = re.finditer(r'\b([A-ZÄÖÜ][a-zäöüß]{2,})\b', content)
-    for match in words:
-        if match.group(1).lower() in FIRST_NAMES:
-            add_detection("first_name", match.group(1), match.start(), match.end(), 0.85)
-
-    # 3. Vollständige Namen via Kontext-Patterns
+    # 2. Issue #1 FIX: Vollständige Namen via Kontext-Patterns FIRST
+    # Run full-name patterns before individual first-name scan so the complete
+    # "Vorname Nachname" span is locked and prevents the last name leaking through.
     for pattern in LAST_NAME_INDICATORS:
-        for match in re.finditer(pattern, content, re.IGNORECASE):
+        for match in re.finditer(pattern, content):
             name = match.group(1)
             start = content.find(name, match.start())
             if start >= 0:
                 add_detection("full_name", name, start, start + len(name), 0.90)
+
+    # 3. Vorname-Erkennung (case-insensitive Wortliste) – runs AFTER full-name scan
+    words = re.finditer(r'\b([A-ZÄÖÜ][a-zäöüß]{2,})\b', content)
+    for match in words:
+        if match.group(1).lower() in FIRST_NAMES:
+            add_detection("first_name", match.group(1), match.start(), match.end(), 0.85)
 
     # Sortieren nach Position
     detections.sort(key=lambda x: x["start"])

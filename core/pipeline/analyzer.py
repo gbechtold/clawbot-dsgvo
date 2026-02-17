@@ -66,7 +66,7 @@ Hinweise:
 - request = Wunsch/Anfrage
 - question = Frage/Nachfrage  
 - praise = Lob/positives Feedback
-- critical = sofortiger Handlungsbedarf (Hygiene, Sicherheit, rechtlich)
+- critical = sofortiger Handlungsbedarf (Hygiene, Gesundheit, Lebensmittelsicherheit, Verletzung, Unfall, Vergiftung, Notfall)
 - Sentiment: -1.0 = sehr wütend, 0.0 = neutral, +1.0 = sehr begeistert"""
 
     try:
@@ -132,8 +132,12 @@ def _fallback_analysis(content: str) -> AnalysisResult:
     else:
         category = "suggestion"
 
-    # Urgency
-    if any(w in c for w in ["hygiene","sofort","dringend","gefährlich","gesundheit","kritisch"]):
+    # Urgency – Issue #2: extended critical keyword list for safety/hygiene
+    if any(w in c for w in [
+        "hygiene","gesundheit","lebensmittel","vergiftung","verletzung","unfall",
+        "gefährlich","sofortiger","dringend","notfall","rohes fleisch","handschuhe",
+        "sofort","kritisch","skandal",
+    ]):
         urgency = "critical"
     elif any(w in c for w in ["schnell","bald","wichtig","unverzüglich"]):
         urgency = "high"
