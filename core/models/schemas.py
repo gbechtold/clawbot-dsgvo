@@ -25,7 +25,7 @@ class AnalysisResult(BaseModel):
     """Model for LLM analysis result."""
     category: str = Field(..., description="Feedback category")
     urgency: str = Field(..., description="Urgency level (low, medium, high, critical)")
-    sentiment: str = Field(..., description="Sentiment (positive, neutral, negative)")
+    sentiment: float = Field(default=0.0, description="Sentiment score -1.0 (very negative) to +1.0 (very positive)")
     summary: Optional[str] = Field(None, description="Brief summary")
 
 
@@ -36,7 +36,7 @@ class IngestResponse(BaseModel):
     pii_detected: int = Field(..., description="Number of PII entities detected")
     category: str = Field(..., description="Categorized feedback type")
     urgency: str = Field(..., description="Urgency level")
-    sentiment: str = Field(..., description="Sentiment analysis result")
+    sentiment: float = Field(default=0.0, description="Sentiment score -1.0 to +1.0")
     anonymized_preview: str = Field(..., description="Preview of anonymized content")
 
 
@@ -47,7 +47,7 @@ class Signal(BaseModel):
     signal_id: str = Field(..., description="Unique signal identifier")
     category: str = Field(..., description="Signal category")
     urgency: str = Field(..., description="Urgency level")
-    sentiment: str = Field(..., description="Sentiment")
+    sentiment: float = Field(default=0.0, description="Sentiment score -1.0 to +1.0")
     anonymized_content: str = Field(..., description="Anonymized content")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     created_at: datetime = Field(..., description="Creation timestamp")

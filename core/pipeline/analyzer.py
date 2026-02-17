@@ -1,4 +1,4 @@
-"""Content analysis module using Ollama LLM."""
+"""Content analysis module using Ollama LLM – liefert numerisches Sentiment."""
 import logging
 import json
 import httpx
@@ -8,135 +8,137 @@ from models.schemas import AnalysisResult
 
 logger = logging.getLogger(__name__)
 
+# Sentiment-Mapping: Wort → Float
+SENTIMENT_MAP = {
+    "very_positive": 0.9, "sehr_positiv": 0.9,
+    "positive": 0.6,      "positiv": 0.6,
+    "neutral": 0.0,
+    "negative": -0.6,     "negativ": -0.6,
+    "very_negative": -0.9, "sehr_negativ": -0.9,
+}
+
+# Urgency-Mapping: Wort → Wert (für Normalisierung)
+URGENCY_MAP = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+
+
+def _sentiment_to_float(value) -> float:
+    """Konvertiert Sentiment-String oder Zahl zu Float -1.0..+1.0."""
+    if isinstance(value, (int, float)):
+        v = float(value)
+        return max(-1.0, min(1.0, v))
+    s = str(value).lower().strip()
+    if s in SENTIMENT_MAP:
+        return SENTIMENT_MAP[s]
+    try:
+        return max(-1.0, min(1.0, float(s)))
+    except ValueError:
+        return 0.0
+
 
 async def analyze_content(anonymized_content: str) -> AnalysisResult:
     """
-    Analyze anonymized content using Ollama LLM.
+    Analysiert anonymisierten Text via Ollama.
 
-    The LLM processes only anonymized content, ensuring no PII reaches the model.
+    Gibt Kategorie, Dringlichkeit und numerisches Sentiment (-1..+1) zurück.
+    Kein PII verlässt das System – nur anonymisierter Text wird ans LLM gesendet.
 
     Args:
-        anonymized_content: Content with PII replaced by pseudonyms
+        anonymized_content: Text mit ersetzten PII-Feldern
 
     Returns:
-        AnalysisResult with category, urgency, sentiment, and summary
+        AnalysisResult mit category, urgency, sentiment (float), summary
     """
-    prompt = f"""Analyze this customer feedback and provide:
-1. Category (complaint, request, question, praise, suggestion)
-2. Urgency (low, medium, high, critical)
-3. Sentiment (positive, neutral, negative)
-4. Brief summary (max 50 words)
+    prompt = f"""Analysiere dieses Kunden-Feedback auf Deutsch und antworte NUR mit validem JSON.
 
 Feedback:
 {anonymized_content}
 
-Respond ONLY with valid JSON in this exact format:
+Antworte AUSSCHLIESSLICH mit diesem JSON-Format (keine weiteren Texte):
 {{
-  "category": "complaint",
-  "urgency": "medium",
-  "sentiment": "negative",
-  "summary": "Brief summary here"
-}}"""
+  "category": "complaint|request|question|praise|suggestion",
+  "urgency": "low|medium|high|critical",
+  "sentiment": <Zahl zwischen -1.0 (sehr negativ) und +1.0 (sehr positiv)>,
+  "summary": "<Zusammenfassung in max. 40 Wörtern auf Deutsch>"
+}}
+
+Hinweise:
+- complaint = Beschwerde/Problem
+- request = Wunsch/Anfrage
+- question = Frage/Nachfrage  
+- praise = Lob/positives Feedback
+- critical = sofortiger Handlungsbedarf (Hygiene, Sicherheit, rechtlich)
+- Sentiment: -1.0 = sehr wütend, 0.0 = neutral, +1.0 = sehr begeistert"""
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(
                 f"{settings.ollama_url}/api/generate",
                 json={
                     "model": settings.ollama_model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {
-                        "temperature": 0.1,
-                        "top_p": 0.9
-                    }
+                    "options": {"temperature": 0.05, "top_p": 0.9},
                 }
             )
 
             if response.status_code != 200:
-                logger.error(f"Ollama request failed: {response.status_code} - {response.text}")
+                logger.error(f"Ollama Fehler: {response.status_code}")
                 return _fallback_analysis(anonymized_content)
 
-            result = response.json()
-            response_text = result.get("response", "")
+            raw = response.json().get("response", "")
+            logger.debug(f"LLM raw response: {raw[:200]}")
 
-            # Extract JSON from response
-            try:
-                # Try to find JSON in the response
-                json_start = response_text.find("{")
-                json_end = response_text.rfind("}") + 1
-
-                if json_start >= 0 and json_end > json_start:
-                    json_str = response_text[json_start:json_end]
-                    analysis_data = json.loads(json_str)
-
-                    return AnalysisResult(
-                        category=analysis_data.get("category", "unknown"),
-                        urgency=analysis_data.get("urgency", "medium"),
-                        sentiment=analysis_data.get("sentiment", "neutral"),
-                        summary=analysis_data.get("summary", "No summary available")
-                    )
-                else:
-                    logger.warning("No JSON found in LLM response, using fallback")
-                    return _fallback_analysis(anonymized_content)
-
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM response as JSON: {e}")
-                logger.debug(f"Raw response: {response_text}")
+            # JSON aus Antwort extrahieren
+            j_start = raw.find("{")
+            j_end = raw.rfind("}") + 1
+            if j_start >= 0 and j_end > j_start:
+                data = json.loads(raw[j_start:j_end])
+                return AnalysisResult(
+                    category=data.get("category", "unknown"),
+                    urgency=data.get("urgency", "medium"),
+                    sentiment=_sentiment_to_float(data.get("sentiment", 0)),
+                    summary=data.get("summary", ""),
+                )
+            else:
+                logger.warning("Kein JSON in LLM-Antwort – Fallback")
                 return _fallback_analysis(anonymized_content)
 
     except httpx.TimeoutException:
-        logger.error("Ollama request timed out")
+        logger.error("Ollama Timeout")
         return _fallback_analysis(anonymized_content)
     except Exception as e:
-        logger.error(f"LLM analysis failed: {e}", exc_info=True)
+        logger.error(f"LLM-Analyse fehlgeschlagen: {e}", exc_info=True)
         return _fallback_analysis(anonymized_content)
 
 
 def _fallback_analysis(content: str) -> AnalysisResult:
-    """
-    Provide a basic fallback analysis when LLM is unavailable.
+    """Keyword-basierter Fallback wenn Ollama nicht erreichbar."""
+    c = content.lower()
 
-    Args:
-        content: Content to analyze
+    # Sentiment
+    pos = sum(1 for w in ["super","toll","top","danke","freundlich","wunderbar","prima","perfekt","klasse"] if w in c)
+    neg = sum(1 for w in ["problem","beschwerde","schlecht","nicht","fehler","hygiene","skandal","sofort","gravierend","nie wieder"] if w in c)
+    sentiment = round(min(1.0, pos * 0.3) - min(1.0, neg * 0.3), 2)
 
-    Returns:
-        Basic AnalysisResult
-    """
-    # Simple keyword-based fallback
-    content_lower = content.lower()
-
-    # Determine sentiment
-    positive_words = ["thank", "great", "excellent", "happy", "love", "perfect"]
-    negative_words = ["bad", "terrible", "worst", "hate", "problem", "issue", "broken"]
-
-    positive_count = sum(1 for word in positive_words if word in content_lower)
-    negative_count = sum(1 for word in negative_words if word in content_lower)
-
-    if positive_count > negative_count:
-        sentiment = "positive"
-    elif negative_count > positive_count:
-        sentiment = "negative"
-    else:
-        sentiment = "neutral"
-
-    # Determine category
-    if any(word in content_lower for word in ["complaint", "problem", "issue", "broken", "not working"]):
+    # Kategorie
+    if any(w in c for w in ["beschwerde","problem","nicht geliefert","zu viel verrechnet","hygiene","fehler"]):
         category = "complaint"
-    elif any(word in content_lower for word in ["request", "need", "want", "could you"]):
-        category = "request"
-    elif any(word in content_lower for word in ["question", "how", "what", "when", "where", "why"]):
+    elif any(w in c for w in ["führt ihr","gibt es","wo finde","online bestell","wann"]):
         category = "question"
-    elif any(word in content_lower for word in ["thank", "great", "excellent", "love"]):
+    elif any(w in c for w in ["bitte liefern","würde gern","wünsche"]):
+        category = "request"
+    elif any(w in c for w in ["super","toll","danke","freundlich","top","prima"]):
         category = "praise"
     else:
         category = "suggestion"
 
-    # Determine urgency
-    if any(word in content_lower for word in ["urgent", "asap", "immediately", "critical", "emergency"]):
+    # Urgency
+    if any(w in c for w in ["hygiene","sofort","dringend","gefährlich","gesundheit","kritisch"]):
         urgency = "critical"
-    elif any(word in content_lower for word in ["soon", "important", "quickly"]):
+    elif any(w in c for w in ["schnell","bald","wichtig","unverzüglich"]):
         urgency = "high"
+    elif any(w in c for w in ["wenn möglich","gelegentlich"]):
+        urgency = "low"
     else:
         urgency = "medium"
 
@@ -144,5 +146,5 @@ def _fallback_analysis(content: str) -> AnalysisResult:
         category=category,
         urgency=urgency,
         sentiment=sentiment,
-        summary=content[:100] + "..." if len(content) > 100 else content
+        summary=content[:120] + "…" if len(content) > 120 else content,
     )
